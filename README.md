@@ -1,3 +1,25 @@
-운영체제 과제 기록용
+# 운영체제 과제2
 
-ㅇㅇ
+## 목적: Thread-Safe-Queue를 만듦
+```
+-> 다수의 스레드가 동시에 접근하더라도 데이터의 무결성 및 일관성을 유지하도록 설계된 큐(Queue) 자료구조
+-> 멀티스레딩 환경에서 큐를 사용할 때 경쟁 조건(Race Condition), 데이터 손상(Data Corruption) 등의 문제 방지
+```
+enqueue(): 큐에다가 삽입하는 함수
+-> 문제: 여러 개의 스레드가 동시에 enqueue()를 호출할 때 포인터가 누구를 가리킬지 장담할 수 없음
+
+**해결하고자 하는 것: enqueue()/dequeue()를 할 때, 문맥 교환이 발생하지 않도록(atomic 하도록)**
+
+## 고려사항(조건)
+
+- 내부 구조가 반드시 Linked List일 필요 X
+- C++ 사용 시, cin 및 cout + thread 관련 기능(thread, atomic 등)만 사용
+- queue.h 수정 불가 (제출 x)
+- qtype.h 수정 가능 (제출 o)
+- queue.cpp 큐 구현 (제출)
+- main.c 테스트 코드 (제출 x)
+
+## Parameters
+- 0 <= key < 10,000,000 <-- 큐 크기 최소 ~ 최대 값 --> 한 마디로 이를 고려해서 설계해야 함
+- client thread: 1~32 개
+- item 크기: 1byte ~ 1KB <-- 이게 뭔데? 확인 필요
