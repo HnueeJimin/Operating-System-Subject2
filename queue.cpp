@@ -37,7 +37,7 @@ Node* nalloc(Item item) {
     Node* node = new Node();
     node->item = item;  // 아이템 설정
     node->next = nullptr;  // 다음 노드는 nullptr로 초기화
-    return NULL;
+    return node;
 }
 
 // 노드 메모리 해제 함수

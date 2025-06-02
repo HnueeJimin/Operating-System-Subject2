@@ -1,95 +1,78 @@
 #include <iostream>
 #include <thread>
 #include <atomic>
+#include <cstdlib>
+#include <ctime>
 #include "queue.h"
 
 using namespace std;
 
-// 다중 클라이언트 테스트
-// 설명: 아래 요청(Operation, Request)을 처리할 때
-// 큐의 Item은 void*이므로 간단하게 받을 수 있음
+#define REQUESTS_PER_CLIENT 10000
+#define CLIENT_COUNT 4
 
-#define REQUEST_PER_CLINET	10000
-
-atomic<int> sum_key = 0;
-atomic<int> sum_value = 0;
-//atomic<double> response_time_tot = 0.0;
+atomic<int> sum_key(0);
+atomic<int> sum_value(0);
 
 typedef enum {
-	GET,
-	SET,
-	GETRANGE
+    GET,
+    SET
 } Operation;
 
 typedef struct {
-	Operation op;
-	Item item;
+    Operation op;
+    Item item;
 } Request;
 
-void client_func(Queue* queue, Request requests[], int n_request) {
-	Reply reply = { false, 0 };
+void client_func(Queue* queue, Request* requests, int n_request) {
+    for (int i = 0; i < n_request; i++) {
+        Reply reply;
 
-	// start_time = .....
+        if (requests[i].op == GET) {
+            reply = dequeue(queue);
+        } else {
+            reply = enqueue(queue, requests[i].item);
+        }
 
-	for (int i = 0; i < n_request; i++) {
-		if (requests[i].op == GET) {
-			reply = dequeue(queue);
-		}
-		else { // SET
-			reply = enqueue(queue, requests[i].item);
-		}
-
-		if (reply.success) {
-			// 응답이 성공했을 경우 key, value 누적 계산 (아무 의미 없는 연산)
-			sum_key += reply.item.key;
-			sum_value += (int)reply.item.value; // void*에서 다시 int로 변환
-
-			// 응답된 key, value를 출력
-			// ...생략...
-		}
-		else {
-			// noop
-		}
-	}
-
-	// 추후 필요 시 처리 시간 계산 코드
-	//
-	// elapsed_time = finish_time - start_time;
-	// finish_time = ....;
-	// average_response_time = elapsed_time / REQUEST_PER_CLIENT;
-	// printf(...average_response_time of client1 = .....);
-	// response_time_tot += finish_time - start_time;
+        if (reply.success) {
+            sum_key += reply.item.key;
+            sum_value += reinterpret_cast<intptr_t>(reply.item.value);
+        }
+    }
 }
 
-int main(void) {
-	srand((unsigned int)time(NULL));
+int main() {
+    srand(static_cast<unsigned>(time(nullptr)));
 
-	// 요청 배열 생성 (GETRANGE는 구현 생략
-	Request requests[REQUEST_PER_CLINET];
-	for (int i = 0; i < REQUEST_PER_CLINET / 2; i++) {
-		requests[i].op = SET;
-		requests[i].item.key = i;
-		requests[i].item.value = (void*)(rand() % 1000000);
-	}
-	for (int i = REQUEST_PER_CLINET / 2; i < REQUEST_PER_CLINET; i++) {
-		requests[i].op = GET;
-	}
+    Queue* queue = init();
 
-	Queue* queue = init();
-	//if (queue == NULL) return 0;
+    // 정적 배열로 요청 저장
+    Request all_requests[CLIENT_COUNT][REQUESTS_PER_CLIENT];
+    thread clients[CLIENT_COUNT];
 
-	// 단일 스레드 클라이언트 실행, 추후 다중 클라이언트로 확장 가능
-	thread client = thread(client_func, queue, requests, REQUEST_PER_CLINET);
-	client.join();
+    for (int c = 0; c < CLIENT_COUNT; ++c) {
+        for (int i = 0; i < REQUESTS_PER_CLIENT / 2; ++i) {
+            all_requests[c][i].op = SET;
+            all_requests[c][i].item.key = rand() % 10000000;
+            all_requests[c][i].item.value = reinterpret_cast<void*>(rand() % 1000000);
+        }
+        for (int i = REQUESTS_PER_CLIENT / 2; i < REQUESTS_PER_CLIENT; ++i) {
+            all_requests[c][i].op = GET;
+        }
+    }
 
-	release(queue);
+    // 클라이언트 스레드 시작
+    for (int c = 0; c < CLIENT_COUNT; ++c) {
+        clients[c] = thread(client_func, queue, all_requests[c], REQUESTS_PER_CLIENT);
+    }
 
-	// 응답된 항목들의 합산 출력
-	cout << "sum of returned keys = " << sum_key << endl;
-	cout << "sum of returned values = " << sum_value << endl;
+    // join
+    for (int c = 0; c < CLIENT_COUNT; ++c) {
+        clients[c].join();
+    }
 
-	// 추후 필요 시 전체 평균 응답 시간 계산 코드 추가
-	// total_average_response_time = total_response_time / n_client;
-	// printf("total average response time = ....");
-	return 0;
+    cout << "sum of returned keys   = " << sum_key.load() << endl;
+    cout << "sum of returned values = " << sum_value.load() << endl;
+
+    release(queue);
+    return 0;
 }
