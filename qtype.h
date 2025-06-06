@@ -9,6 +9,7 @@ typedef void* Value;       // 범용 데이터를 담기 위한 포인터 타입
 typedef struct {
     Key key;
     Value value;
+    int value_size;  // 포인터가 가리키는 메모리 공간의 크기 함께 전달
 } Item;
 
 typedef struct {

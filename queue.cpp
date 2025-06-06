@@ -55,11 +55,11 @@ Node* nclone(Node* node) {
 
 // 큐에 item을 추가 (enqueue)
 Reply enqueue(Queue* queue, Item item) {
-    Reply reply = { false, {0, nullptr} };
+    Reply reply = { false, {0, nullptr} }; // 초기화된 응답 구조체
     
     Node* node = nalloc(item);  // 새로운 노드 생성
 
-    std::lock_guard<std::mutex> lock(tail_lock);  // tail_lock을 사용하여 동기화
+    std::lock_guard<std::mutex> lock(tail_lock);  // tail_lock을 사용하여 동기화, 멀티쓰레드에서 안전하게 처리
     queue->tail->next = node;  // 현재 tail의 next를 새 노드로 설정
     queue->tail = node;  // 큐의 tail을 새 노드로 업데이트
 
@@ -91,6 +91,27 @@ Reply dequeue(Queue* queue) {
 
 // start와 end 키 범위의 아이템을 포함한 새 큐 반환 (GETRANGE)
 Queue* range(Queue* queue, Key start, Key end) {
-    // 큐를 순회하면서 조건에 맞는 아이템들을 새로운 큐에 복사
-    return NULL;
+    Queue* new_queue = init();  // 새 큐 생성
+
+    Node* curr = queue->head->next;  // 첫 번째 노드부터 시작 (더미 노드 제외)
+
+    while (curr != nullptr) {
+        Key k = curr->item.key; // key 값도 복사, 어차피 서로 다른 큐
+
+        if (start <= k && k <= end) { // 현재 노드의 key가 범위 내에 있는 경우
+            // 깊은 복사
+            void* value_copy = malloc(curr->item.value_size); // value 크기만큼 메모리 할당
+            memcpy(value_copy, curr->item.value, curr->item.value_size); // value 복사
+
+            Item copied;
+            copied.key = curr->item.key; // key 복사
+            copied.value = value_copy; // 복사한 value 설정
+            copied.value_size = curr->item.value_size; // value 크기 설정
+
+            enqueue(new_queue, copied);  // 새 큐에 아이템 추가
+        }
+        curr = curr->next;  // 다음 노드로 이동
+    }
+
+    return new_queue;  // 새 큐 반환
 }
