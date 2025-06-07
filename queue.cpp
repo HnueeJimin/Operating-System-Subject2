@@ -1,5 +1,6 @@
 #include <iostream>
 #include <mutex>
+#include <cstring>
 #include "queue.h"
 
 static std::mutex head_lock;
@@ -23,12 +24,16 @@ void release(Queue* queue) {
     Node* curr = queue->head;  // 큐의 head부터 시작
     while (curr != nullptr) {
         Node* next = curr->next;  // 다음 노드 저장
-        delete curr;              // 현재 노드 메모리 해제
-        curr = next;              // 다음 노드로 이동
+
+        if (curr->item.value) {
+            free(curr->item.value);  // 아이템의 value 메모리 해제
+            curr->item.value = nullptr;  // 포인터 초기화
+        }
+
+        delete curr;  // 현재 노드 메모리 해제
+        curr = next;  // 다음 노드로 이동
     }
     delete queue;  // 큐 자체 메모리 해제
-
-    return;
 }
 
 // 새로운 노드 생성 함수
@@ -55,7 +60,7 @@ Node* nclone(Node* node) {
 
 // 큐에 item을 추가 (enqueue)
 Reply enqueue(Queue* queue, Item item) {
-    Reply reply = { false, {0, nullptr} }; // 초기화된 응답 구조체
+    Reply reply = { false, {0, nullptr, 0} }; // 초기화된 응답 구조체
     
     Node* node = nalloc(item);  // 새로운 노드 생성
 
