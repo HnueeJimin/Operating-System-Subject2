@@ -1,30 +1,30 @@
 #ifndef _QUEUE_H // header guard
 #define _QUEUE_H 
 
-// ========== 큐 관련 함수 선언 ==========
-// 주의: 일반적으로 queue_init()처럼 함수 이름에 prefix를 붙이지만
-// 본 구현에서는 단순함을 위해 짧은 이름을 사용함
+// ==========이 파일은 수정 불가==========
+// 참고: 일반적으로 queue_init()과 같이 prefix를 붙여 소속(?)을 명확히 함
+// 이 과제에서는 편의를 위해 짧은 이름을 사용
 
 #include "qtype.h"
 
-// 큐 초기화 및 해제
+// 큐 초기화, 해제
 Queue* init(void);
 void release(Queue* queue);
 
-// ========== concurrent operations ==========
+// ==========concurrent operations==========
 
-// 노드 생성 및 초기화, 해제, 복제
+// 노드 생성&초기화, 해제, 복제
 Node* nalloc(Item item);
 void nfree(Node* node);
 Node* nclone(Node* node);
 
-// (key, item) 쌍을 큐에 삽입
-// 성공 시: success = true, 실패 시: success = false
+// (key, item)을 키값에 따라 적절한 위치에 추가
+// Reply: 문제가 없으면 success=true, 아니면 success=false
 Reply enqueue(Queue* queue, Item item);
 
-// 큐에서 맨 앞의 항목(가장 오래된 항목)을 제거하여 반환
-// 큐가 비어있으면: success = false
-// 항목이 있으면: success = true, item = 맨 앞 항목
+//  첫 번째 노드(키값이 가장 큰 노드)를 추출(큐에서 삭제하고 아이템을 리턴)
+// Reply: 큐가 비어있으면 success=false
+//        아니면          success=true,  item=첫 번째 노드의 아이템
 Reply dequeue(Queue* queue);
 
 // start <= key <= end 조건을 만족하는 항목들을 찾아
