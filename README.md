@@ -33,3 +33,4 @@ enqueue(): 큐에다가 삽입하는 함수
 - 25.06.02, 컴파일 에러 수정, 기본적으로 make 시 올바르게 컴파일되도록 수정
 - 25.06.06, range() 함수 구현
 - 25.06.07, 디버깅용 코드 수정 (1. enqueue/dequeue 는 atomic하게 동작하는지? Deep Copy 검증)
+- 25.06.08, 자료구조 변경(Linked List -> Skip List), 디버깅 코드 재수정
