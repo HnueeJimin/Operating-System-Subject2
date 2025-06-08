@@ -6,14 +6,16 @@
 using namespace std;
 using namespace std::chrono;
 
-#define REQUEST_PER_CLIENT 10000
+#define REQUEST_PER_CLIENT 1000
 #define RANGE_START_KEY 100
 #define RANGE_END_KEY 110
 
+int enqueue_count = 0;
+int dequeue_count = 0;
+
 typedef enum {
     GET,
-    SET,
-    GETRANGE
+    SET
 } Operation;
 
 typedef struct {
@@ -21,23 +23,29 @@ typedef struct {
     Item item;
 } Request;
 
-// enqueue/dequeue 테스트용 쓰레드
 void client_func(Queue* queue, Request requests[], int n_request) {
     auto start_time = high_resolution_clock::now();
 
     for (int i = 0; i < n_request; i++) {
         Reply reply;
+
         if (requests[i].op == GET) {
             reply = dequeue(queue);
             if (reply.success) {
-                int val = *((int*)reply.item.value);
-                cout << "[GET] key: " << reply.item.key << ", value: " << val << endl;
+                dequeue_count++;
+                cout << "dequeue : success=true  [key=" << reply.item.key
+                     << ", value=" << *((int*)reply.item.value) << "]" << endl;
+            } else {
+                cout << "dequeue : success=false" << endl;
             }
         } else if (requests[i].op == SET) {
             reply = enqueue(queue, requests[i].item);
             if (reply.success) {
-                int val = *((int*)reply.item.value);
-                cout << "[SET] key: " << reply.item.key << ", value: " << val << endl;
+                enqueue_count++;
+                cout << "enqueue : success=true  [key=" << reply.item.key
+                     << ", value=" << *((int*)reply.item.value) << "]" << endl;
+            } else {
+                cout << "enqueue : success=false" << endl;
             }
         }
     }
@@ -47,22 +55,44 @@ void client_func(Queue* queue, Request requests[], int n_request) {
     cout << "[Client Thread] Time: " << elapsed << " ms" << endl;
 }
 
-// 깊은 복사 검증용 쓰레드
-void range_checker(Queue* queue, Key start, Key end) {
-    auto start_time = high_resolution_clock::now();
+void print_queue_state(Queue* queue) {
+    cout << "\n== Final queue state ==" << endl;
+    Node* curr = queue->head->forward[0];
+    int node_count = 0;
 
+    if (!curr) {
+        cout << "current queue : <empty>" << endl;
+    } else {
+        cout << "current queue :" << endl;
+        while (curr) {
+            int val = *((int*)curr->item.value);
+            cout << "  key=" << curr->item.key << ", value=" << val << endl;
+            node_count++;
+            curr = curr->forward[0];
+        }
+    }
+
+    bool safe = (enqueue_count == (dequeue_count + node_count));
+    cout << "Safety check: enqueue_count=" << enqueue_count
+         << "; dequeue_count=" << dequeue_count
+         << "; node_count=" << node_count
+         << "; safe=" << (safe ? "true" : "false") << endl;
+}
+
+void test_range(Queue* queue, Key start, Key end) {
+    cout << "\n== Performing range(" << start << ", " << end << ") ==" << endl;
     Queue* copied = range(queue, start, end);
 
-    auto end_time = high_resolution_clock::now();
-    auto elapsed = duration_cast<milliseconds>(end_time - start_time).count();
-    cout << "[Range Thread] Time: " << elapsed << " ms" << endl;
-
-    cout << "[Range Thread] Deep copy result:" << endl;
     Node* curr = copied->head->forward[0];
-    while (curr) {
-        int val = *((int*)curr->item.value);
-        cout << "  [COPY] key: " << curr->item.key << ", value: " << val << endl;
-        curr = curr->forward[0];
+    if (!curr) {
+        cout << "range result : <empty>" << endl;
+    } else {
+        cout << "range result :" << endl;
+        while (curr) {
+            int val = *((int*)curr->item.value);
+            cout << "  [COPY] key=" << curr->item.key << ", value=" << val << endl;
+            curr = curr->forward[0];
+        }
     }
 
     release(copied);
@@ -88,12 +118,11 @@ int main(void) {
     Queue* queue = init();
 
     thread t1(client_func, queue, requests, REQUEST_PER_CLIENT);
-    thread t2(range_checker, queue, RANGE_START_KEY, RANGE_END_KEY);
-
     t1.join();
-    t2.join();
 
+    test_range(queue, RANGE_START_KEY, RANGE_END_KEY);
+
+    print_queue_state(queue);
     release(queue);
-
     return 0;
 }
