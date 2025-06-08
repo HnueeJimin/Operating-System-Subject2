@@ -1,9 +1,6 @@
 #include <iostream>
-#include <mutex>
 #include <cstring>
 #include "queue.h"
-
-static std::mutex skiplist_lock;
 
 // 랜덤 레벨 생성 함수 (스킵 리스트의 레벨을 결정하는 데 사용)
 int random_level() {
@@ -68,6 +65,7 @@ Node* nalloc(Item item) {
 // 노드 메모리 해제 함수
 void nfree(Node* node) {
     if (node) {
+        if (node->item.value) free(node->item.value);  // 아이템의 value 메모리 해제
         free(node->forward);  // forward 포인터 배열 메모리 해제
         free(node); // 노드 자체 메모리 해제
     }
@@ -89,7 +87,7 @@ Node* nclone(Node* node) {
 
 // 큐에 item을 추가 (enqueue)
 Reply enqueue(Queue* queue, Item item) {
-    std::lock_guard<std::mutex> lock(skiplist_lock);  // skiplist_lock을 사용하여 동기화
+    std::lock_guard<std::mutex> lock(queue->lock);  // skiplist_lock을 사용하여 동기화
 
     Reply reply = { false, {0, nullptr} };  // 초기화된 응답 구조체
 
@@ -143,7 +141,7 @@ Reply enqueue(Queue* queue, Item item) {
 
 // 큐에서 item을 제거하여 반환 (dequeue)
 Reply dequeue(Queue* queue) {
-    std::lock_guard<std::mutex> lock(skiplist_lock);  // skiplist_lock을 사용하여 동기화
+    std::lock_guard<std::mutex> lock(queue->lock);  // skiplist_lock을 사용하여 동기화
 
     Reply reply = { false, {0, nullptr} };  // 초기화된 응답 구조체
     Node* first = queue->head->forward[0];  // 첫 번째 노드 (가장 작은 키를 가진 노드)
@@ -169,7 +167,7 @@ Reply dequeue(Queue* queue) {
 
 // start와 end 키 범위의 아이템을 포함한 새 큐 반환 (GETRANGE)
 Queue* range(Queue* queue, Key start, Key end) {
-    std::lock_guard<std::mutex> lock(skiplist_lock);  // skiplist_lock을 사용하여 동기화
+    std::lock_guard<std::mutex> lock(queue->lock);  // skiplist_lock을 사용하여 동기화
 
     Queue* new_queue = init();  // 새 큐 초기화
     Node* curr = queue->head->forward[0];  // 현재 노드 (첫 번째 노드부터 시작)

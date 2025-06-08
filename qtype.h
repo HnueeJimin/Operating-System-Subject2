@@ -1,5 +1,6 @@
 #ifndef _QTYPE_H  // header guard
 #define _QTYPE_H
+#include <mutex>
 
 // ==========이 파일은 수정 가능==========
 // 스킵 리스트로 구현
@@ -31,6 +32,7 @@ typedef struct node_t {
 typedef struct {
     Node* head; // 더미 노드, 가장 작은 키를 가진 노드
     int level; // 현재 스킵 리스트의 레벨
+    std::mutex lock; // 스킵 리스트에 대한 동기화용 뮤텍스, 각 큐마다 하나씩 존재
 } Queue; // queue.h 수정 못하므로 이름은 Queue로 유지
 
 // 함수 선언은 별도 소스 또는 헤더에 정의 가능
