@@ -5,7 +5,7 @@
 // ==========이 파일은 수정 가능==========
 // 스킵 리스트로 구현
 
-# define SKIPLIST_MAX_LEVEL 24 // key의 최대 레벨, 2^24 = 16,777,216
+# define SKIPLIST_MAX_LEVEL 16
 # define SKIPLIST_P 0.5
 
 typedef unsigned int Key;  // 데이터 식별용 키 (주로 정수형 사용), 값이 클수록 높은 우선순위

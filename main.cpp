@@ -1,129 +1,122 @@
 #include <iostream>
 #include <thread>
-#include <chrono>
+#include <atomic>
 #include "queue.h"
+#include <chrono>
+#include <cstdlib>
+#include <ctime>
 
 using namespace std;
-using namespace std::chrono;
 
-int enqueue_count_t1 = 0;
-int enqueue_count_t2 = 0;
-int dequeue_count_t1 = 0;
-int dequeue_count_t2 = 0;
-int dequeue_count_t3 = 0;
+// 초간단 구동 테스트
+// 주의: 아래 정의(Operation, Request)는 예시일 뿐
+// 큐의 Item은 void*이므로 얼마든지 달라질 수 있음
 
-#define ENQUEUE_PER_THREAD 500
+#define REQUEST_PER_CLIENT 100000
+#define NUM_CLIENTS 4
 
-// ================= enqueue =====================
-void client_func_enqueue(Queue* queue, int start_key, int count, int& enqueue_count) {
-    for (int i = 0; i < count; i++) {
-        Item item;
-        item.key = start_key + i;
-        
-        int* val = (int*)malloc(sizeof(int));
-        *val = rand() % 1000000;
+atomic<int> sum_key = 0;
+atomic<int> sum_value = 0;
+//atomic<double> response_time_tot = 0.0;
 
-        item.value = val;
-        item.value_size = sizeof(int);
+typedef enum {
+    GET,
+    SET,
+} Operation;
 
-        Reply reply = enqueue(queue, item);
-        if (reply.success) {
-            enqueue_count++;
-            cout << "enqueue : success=true  [key=" << item.key << ", value=" << *val << "]" << endl;
-        } else {
-            cout << "enqueue : success=false" << endl;
+typedef struct {
+    Operation op;
+    Item item;
+} Request;
+
+void client_func(Queue* queue, Request* requests, int n_request, int client_id) {
+    using namespace chrono;
+
+    Reply reply;
+    auto start_time = high_resolution_clock::now();
+
+    for (int i = 0; i < n_request; ++i) {
+        if (requests[i].op == GET) {
+            reply = dequeue(queue);
         }
-    }
-}
-
-// ================= dequeue =====================
-void client_func_dequeue(Queue* queue, int count, int& dequeue_count, const string& name) {
-    for (int i = 0; i < count; i++) {
-        Reply reply = dequeue(queue);
-        if (reply.success) {
-            dequeue_count++;
-            cout << name << " dequeue : success=true  [key=" << reply.item.key
-                 << ", value=" << *((int*)reply.item.value) << "]" << endl;
-        } else {
-            cout << name << " dequeue : success=false" << endl;
+        else {
+            reply = enqueue(queue, requests[i].item);
         }
-    }
-}
 
-// ================= queue 상태 출력 =====================
-void print_queue_state(Queue* queue, const string& name, int enqueue_count, int dequeue_count) {
-    cout << "\n== " << name << " Final queue state ==" << endl;
-    Node* curr = queue->head->forward[0];
-    int node_count = 0;
-
-    if (!curr) {
-        cout << "current queue : <empty>" << endl;
-    } else {
-        cout << "current queue :" << endl;
-        while (curr) {
-            int val = *((int*)curr->item.value);
-            cout << "  key=" << curr->item.key << ", value=" << val << endl;
-            node_count++;
-            curr = curr->forward[0];
+        if (reply.success && reply.item.value && reply.item.value_size > 0) {
+            sum_key += reply.item.key;
+            sum_value += *(reinterpret_cast<uint8_t*>(reply.item.value));
         }
     }
 
-    bool safe = (enqueue_count == dequeue_count + node_count);
-    cout << "Safety check: enqueue=" << enqueue_count
-         << "; dequeue=" << dequeue_count
-         << "; remaining=" << node_count
-         << "; safe=" << (safe ? "true" : "false") << endl;
+    auto end_time = high_resolution_clock::now();
+    auto duration = duration_cast<microseconds>(end_time - start_time).count();
+    double avg_time = static_cast<double>(duration) / n_request;
+
+    cout << "[Client " << client_id << "] Avg response time: " << avg_time << " us" << endl;
 }
 
-int main(void) {
-    srand((unsigned int)time(NULL));
+int main() {
 
-    // =================== Step 1: enqueue =====================
-    Queue* queue_t1 = init();
-    Queue* queue_t2 = init();
+    srand(static_cast<unsigned int>(time(NULL)));
 
-    thread t1(client_func_enqueue, queue_t1, 0, ENQUEUE_PER_THREAD, ref(enqueue_count_t1));
-    thread t2(client_func_enqueue, queue_t2, 10000, ENQUEUE_PER_THREAD, ref(enqueue_count_t2));
-
-    t1.join();
-    t2.join();
-
-    // =================== Step 2: deepcopy queue_t2 -> queue_t3 =====================
-    Queue* queue_t3 = range(queue_t2, 10000, 10000 + ENQUEUE_PER_THREAD - 1);
-
-    // t2의 첫 노드 값 수정
-    Node* node = queue_t2->head->forward[0];
-    if (node && node->item.value) {
-        *((int*)node->item.value) = -9999;  // 강제로 값 변경
+    Queue* queue = init();
+    if (!queue) {
+        cerr << "Queue initialization failed!" << endl;
+        return 1;
     }
 
-    // =================== Step 3: dequeue =====================
-    thread d1(client_func_dequeue, queue_t1, ENQUEUE_PER_THREAD, ref(dequeue_count_t1), "t1");
-    thread d2(client_func_dequeue, queue_t2, ENQUEUE_PER_THREAD, ref(dequeue_count_t2), "t2");
-    thread d3(client_func_dequeue, queue_t3, ENQUEUE_PER_THREAD, ref(dequeue_count_t3), "t3");
+    Request* all_requests[NUM_CLIENTS];
+    thread client_threads[NUM_CLIENTS];
 
-    d1.join(); d2.join(); d3.join();
+    for (int c = 0; c < NUM_CLIENTS; ++c) {
+        all_requests[c] = new Request[REQUEST_PER_CLIENT];
 
-    // =================== Step 4: deep copy 확인 =====================
-    cout << "\n== Deep Copy 검증 결과 ==" << endl;
-    Node* n3 = queue_t3->head->forward[0];
-    if (n3) {
-        int val3 = *((int*)n3->item.value);
-        cout << "t3 첫 노드 value: " << val3 << " (should not be -9999)" << endl;
-        cout << "deep_copy_check: " << (val3 == -9999 ? "false" : "true") << endl;
-    } 
-    // else {
-    //     cout << "t3 is empty" << endl;
-    // }
+        for (int i = 0; i < REQUEST_PER_CLIENT / 2; ++i) {
+            int size = rand() % 1024 + 1;
+            uint8_t* buffer = new uint8_t[size];
+            buffer[0] = rand() % 256;
 
-    // =================== Step 5: 상태 출력 및 해제 =====================
-    print_queue_state(queue_t1, "t1", enqueue_count_t1, dequeue_count_t1);
-    print_queue_state(queue_t2, "t2", enqueue_count_t2, dequeue_count_t2);
-    print_queue_state(queue_t3, "t3", enqueue_count_t2, dequeue_count_t3); // t3는 t2의 복사본이므로 enqueue_count 같음
+            all_requests[c][i].op = SET;
+            all_requests[c][i].item.key = rand() % 10000000;
+            all_requests[c][i].item.value = buffer;
+            //all_requests[c][i].item.size = size;
+        }
 
-    release(queue_t1);
-    release(queue_t2);
-    release(queue_t3);
+        for (int i = REQUEST_PER_CLIENT / 2; i < REQUEST_PER_CLIENT; ++i) {
+            all_requests[c][i].op = GET;
+            all_requests[c][i].item.key = 0;
+            all_requests[c][i].item.value = nullptr;
+            //all_requests[c][i].item.size = 0;
+        }
+    }
+
+    auto start = chrono::high_resolution_clock::now();
+
+    for (int i = 0; i < NUM_CLIENTS; ++i) {
+        client_threads[i] = thread(client_func, queue, all_requests[i], REQUEST_PER_CLIENT, i);
+    }
+
+    for (int i = 0; i < NUM_CLIENTS; ++i) {
+        client_threads[i].join();
+    }
+
+    auto finish = chrono::high_resolution_clock::now();
+    auto total_time = chrono::duration_cast<chrono::milliseconds>(finish - start).count();
+
+    cout << "\n[Main] Total time = " << total_time << " ms\n";
+    cout << "[Main] sum of returned keys = " << sum_key << endl;
+    cout << "[Main] sum of returned values = " << sum_value << endl;
+
+    for (int i = 0; i < NUM_CLIENTS; ++i) {
+        for (int j = 0; j < REQUEST_PER_CLIENT / 2; ++j) {
+            delete[] reinterpret_cast<uint8_t*>(all_requests[i][j].item.value);
+        }
+        delete[] all_requests[i];
+    }
+
+    release(queue);
+    queue = nullptr;
 
     return 0;
 }
