@@ -1,122 +1,50 @@
 #include <iostream>
 #include <thread>
-#include <atomic>
-#include "queue.h"
+#include <vector>
 #include <chrono>
-#include <cstdlib>
-#include <ctime>
+#include <cstdint>
+#include "queue.h"
 
 using namespace std;
 
-// 초간단 구동 테스트
-// 주의: 아래 정의(Operation, Request)는 예시일 뿐
-// 큐의 Item은 void*이므로 얼마든지 달라질 수 있음
-
-#define REQUEST_PER_CLIENT 100000
-#define NUM_CLIENTS 4
-
-atomic<int> sum_key = 0;
-atomic<int> sum_value = 0;
-//atomic<double> response_time_tot = 0.0;
-
-typedef enum {
-    GET,
-    SET,
-} Operation;
-
-typedef struct {
-    Operation op;
-    Item item;
-} Request;
-
-void client_func(Queue* queue, Request* requests, int n_request, int client_id) {
-    using namespace chrono;
-
-    Reply reply;
-    auto start_time = high_resolution_clock::now();
-
-    for (int i = 0; i < n_request; ++i) {
-        if (requests[i].op == GET) {
-            reply = dequeue(queue);
-        }
-        else {
-            reply = enqueue(queue, requests[i].item);
-        }
-
-        if (reply.success && reply.item.value && reply.item.value_size > 0) {
-            sum_key += reply.item.key;
-            sum_value += *(reinterpret_cast<uint8_t*>(reply.item.value));
-        }
-    }
-
-    auto end_time = high_resolution_clock::now();
-    auto duration = duration_cast<microseconds>(end_time - start_time).count();
-    double avg_time = static_cast<double>(duration) / n_request;
-
-    cout << "[Client " << client_id << "] Avg response time: " << avg_time << " us" << endl;
-}
-
 int main() {
+    const int num_threads = 32;
+    const int64_t total_keys = 10000000;
+    const int64_t keys_per_thread = total_keys / num_threads;
 
-    srand(static_cast<unsigned int>(time(NULL)));
+    // Initialize queue
+    Queue* q = init();
 
-    Queue* queue = init();
-    if (!queue) {
-        cerr << "Queue initialization failed!" << endl;
-        return 1;
+    // Start timer
+    auto start = chrono::steady_clock::now();
+
+    // Launch enqueue threads
+    vector<thread> threads;
+    threads.reserve(num_threads);
+    for (int i = 0; i < num_threads; ++i) {
+        int64_t begin = i * keys_per_thread;
+        int64_t end = (i == num_threads - 1) ? total_keys : (i + 1) * keys_per_thread;
+        threads.emplace_back([q, begin, end]() {
+            for (int64_t key = begin; key < end; ++key) {
+                Item item = { (Key)key, nullptr, 0 };
+                enqueue(q, item);
+            }
+            });
     }
 
-    Request* all_requests[NUM_CLIENTS];
-    thread client_threads[NUM_CLIENTS];
-
-    for (int c = 0; c < NUM_CLIENTS; ++c) {
-        all_requests[c] = new Request[REQUEST_PER_CLIENT];
-
-        for (int i = 0; i < REQUEST_PER_CLIENT / 2; ++i) {
-            int size = rand() % 1024 + 1;
-            uint8_t* buffer = new uint8_t[size];
-            buffer[0] = rand() % 256;
-
-            all_requests[c][i].op = SET;
-            all_requests[c][i].item.key = rand() % 10000000;
-            all_requests[c][i].item.value = buffer;
-            //all_requests[c][i].item.size = size;
-        }
-
-        for (int i = REQUEST_PER_CLIENT / 2; i < REQUEST_PER_CLIENT; ++i) {
-            all_requests[c][i].op = GET;
-            all_requests[c][i].item.key = 0;
-            all_requests[c][i].item.value = nullptr;
-            //all_requests[c][i].item.size = 0;
-        }
+    // Join threads
+    for (auto& t : threads) {
+        t.join();
     }
 
-    auto start = chrono::high_resolution_clock::now();
+    // Stop timer
+    auto end = chrono::steady_clock::now();
+    auto duration = chrono::duration_cast<chrono::milliseconds>(end - start).count();
 
-    for (int i = 0; i < NUM_CLIENTS; ++i) {
-        client_threads[i] = thread(client_func, queue, all_requests[i], REQUEST_PER_CLIENT, i);
-    }
+    // Output total elapsed time in milliseconds
+    cout << duration << " ms" << endl;
 
-    for (int i = 0; i < NUM_CLIENTS; ++i) {
-        client_threads[i].join();
-    }
-
-    auto finish = chrono::high_resolution_clock::now();
-    auto total_time = chrono::duration_cast<chrono::milliseconds>(finish - start).count();
-
-    cout << "\n[Main] Total time = " << total_time << " ms\n";
-    cout << "[Main] sum of returned keys = " << sum_key << endl;
-    cout << "[Main] sum of returned values = " << sum_value << endl;
-
-    for (int i = 0; i < NUM_CLIENTS; ++i) {
-        for (int j = 0; j < REQUEST_PER_CLIENT / 2; ++j) {
-            delete[] reinterpret_cast<uint8_t*>(all_requests[i][j].item.value);
-        }
-        delete[] all_requests[i];
-    }
-
-    release(queue);
-    queue = nullptr;
-
+    // Cleanup
+    release(q);
     return 0;
 }
